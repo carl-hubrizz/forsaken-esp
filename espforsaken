@@ -6,7 +6,6 @@ local killersFolder = playersFolder:WaitForChild("Killers")
 local ingameMapFolder = workspace:WaitForChild("Map"):WaitForChild("Ingame")
 
 local addedESPs = {}
-
 local connections = {}
 
 -- Creates a BillboardGui label
@@ -127,6 +126,8 @@ local function scanEnvironmentObjects()
 			addESP(obj, Color3.fromRGB(255, 0, 0), "SPIKE")
 		elseif obj.Name == "BloxyCola" or obj.Name == "Medkit" then
 			addESP(obj, Color3.fromRGB(0, 150, 255), obj.Name)
+		elseif obj.Name == "PizzaDeliveryRig" then
+			addESP(obj, Color3.fromRGB(255, 165, 0), "PIZZA RIG") -- Orange color
 		end
 	end
 end
@@ -142,6 +143,8 @@ local function watchEnvironmentFolder(folder)
 			addESP(obj, Color3.fromRGB(255, 0, 0), "SPIKE")
 		elseif obj.Name == "BloxyCola" or obj.Name == "Medkit" then
 			addESP(obj, Color3.fromRGB(0, 150, 255), obj.Name)
+		elseif obj.Name == "PizzaDeliveryRig" then
+			addESP(obj, Color3.fromRGB(255, 165, 0), "PIZZA RIG")
 		end
 	end)
 	table.insert(connections, conn)

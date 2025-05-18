@@ -1,0 +1,138 @@
+local playersFolder = workspace:WaitForChild("Players")
+local survivorsFolder = playersFolder:WaitForChild("Survivors")
+local killersFolder = playersFolder:WaitForChild("Killers")
+local ingameMapFolder = workspace:WaitForChild("Map"):WaitForChild("Ingame")
+
+local addedESPs = {}
+
+-- Creates a BillboardGui label
+local function createNameTag(adornee, text, color)
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "ESP_NameTag"
+	billboard.Adornee = adornee
+	billboard.AlwaysOnTop = true
+	billboard.Size = UDim2.new(0, 100, 0, 30)
+	billboard.StudsOffset = Vector3.new(0, 3, 0)
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.TextColor3 = color
+	label.TextStrokeTransparency = 0
+	label.TextScaled = true
+	label.Font = Enum.Font.SourceSansBold
+	label.Parent = billboard
+
+	billboard.Parent = adornee
+end
+
+-- Creates a highlight for a model or part
+local function createHighlight(target, color)
+	local highlight = Instance.new("Highlight")
+	highlight.Name = "ESP_Highlight"
+	highlight.FillColor = color
+	highlight.OutlineColor = Color3.new(1, 1, 1)
+	highlight.FillTransparency = 0.5
+	highlight.OutlineTransparency = 0
+	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.Adornee = target
+	highlight.Parent = target
+end
+
+-- Adds ESP to models/parts
+local function addESP(object, color, customName)
+	if addedESPs[object] then return end
+
+	local adornee = object:FindFirstChild("HumanoidRootPart") 
+		or (object:IsA("BasePart") and object) 
+		or (object:IsA("Model") and object:FindFirstChildWhichIsA("BasePart"))
+	if not adornee then return end
+
+	createNameTag(adornee, customName or object.Name, color)
+	createHighlight(object, color)
+	addedESPs[object] = true
+
+	object.AncestryChanged:Connect(function(_, parent)
+		if not parent then
+			local gui = adornee:FindFirstChild("ESP_NameTag")
+			if gui then gui:Destroy() end
+
+			local hl = object:FindFirstChild("ESP_Highlight")
+			if hl then hl:Destroy() end
+
+			addedESPs[object] = nil
+		end
+	end)
+end
+
+-- Wrapper for players
+local function tryAddPlayerESP(model, color)
+	if model:IsA("Model") then
+		local root = model:FindFirstChild("HumanoidRootPart")
+		if root then
+			addESP(model, color)
+		else
+			coroutine.wrap(function()
+				local root = model:WaitForChild("HumanoidRootPart", 5)
+				if root then
+					addESP(model, color)
+				end
+			end)()
+		end
+	end
+end
+
+-- Setup for player folders
+local function scanFolder(folder, color)
+	for _, model in ipairs(folder:GetChildren()) do
+		tryAddPlayerESP(model, color)
+	end
+end
+
+local function watchFolder(folder, color)
+	folder.ChildAdded:Connect(function(model)
+		tryAddPlayerESP(model, color)
+	end)
+end
+
+-- Setup for environment objects with dynamic watching
+local function scanEnvironmentObjects()
+	for _, obj in ipairs(ingameMapFolder:GetDescendants()) do
+		-- Generators inside Instances folder, named "Generator"
+		if obj.Name == "Instances" and obj:IsA("Folder") then
+			local gen = obj:FindFirstChild("Generator")
+			if gen and gen:IsA("Model") then
+				addESP(gen, Color3.fromRGB(0, 150, 255), "GENERATOR")
+			end
+		elseif obj.Name == "Spike" then
+			addESP(obj, Color3.fromRGB(255, 0, 0), "SPIKE")
+		elseif obj.Name == "BloxyCola" or obj.Name == "Medkit" then
+			addESP(obj, Color3.fromRGB(0, 150, 255), obj.Name)
+		end
+	end
+end
+
+local function watchEnvironmentFolder(folder)
+	folder.DescendantAdded:Connect(function(obj)
+		if obj.Name == "Instances" and obj:IsA("Folder") then
+			local gen = obj:WaitForChild("Generator", 5)
+			if gen and gen:IsA("Model") then
+				addESP(gen, Color3.fromRGB(0, 150, 255), "GENERATOR")
+			end
+		elseif obj.Name == "Spike" then
+			addESP(obj, Color3.fromRGB(255, 0, 0), "SPIKE")
+		elseif obj.Name == "BloxyCola" or obj.Name == "Medkit" then
+			addESP(obj, Color3.fromRGB(0, 150, 255), obj.Name)
+		end
+	end)
+end
+
+-- Start ESP
+scanFolder(survivorsFolder, Color3.fromRGB(0, 255, 0)) -- Green survivors
+scanFolder(killersFolder, Color3.fromRGB(255, 0, 0))   -- Red killers
+watchFolder(survivorsFolder, Color3.fromRGB(0, 255, 0))
+watchFolder(killersFolder, Color3.fromRGB(255, 0, 0))
+
+scanEnvironmentObjects()
+watchEnvironmentFolder(ingameMapFolder)

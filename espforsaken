@@ -1,5 +1,4 @@
 local ESP = {}
-
 local playersFolder = workspace:WaitForChild("Players")
 local survivorsFolder = playersFolder:WaitForChild("Survivors")
 local killersFolder = playersFolder:WaitForChild("Killers")
@@ -8,178 +7,129 @@ local ingameMapFolder = workspace:WaitForChild("Map"):WaitForChild("Ingame")
 local addedESPs = {}
 local connections = {}
 
--- Creates a BillboardGui label
+local settings = {
+    Survivors = false,
+    Killers = false,
+    Generators = false,
+    Spikes = false,
+    Items = false,
+}
+
+-- Billboard + highlight creation
 local function createNameTag(adornee, text, color)
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "ESP_NameTag"
-	billboard.Adornee = adornee
-	billboard.AlwaysOnTop = true
-	billboard.Size = UDim2.new(0, 100, 0, 30)
-	billboard.StudsOffset = Vector3.new(0, 3, 0)
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "ESP_NameTag"
+    billboard.Adornee = adornee
+    billboard.AlwaysOnTop = true
+    billboard.Size = UDim2.new(0, 100, 0, 30)
+    billboard.StudsOffset = Vector3.new(0, 3, 0)
 
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, 0, 1, 0)
-	label.BackgroundTransparency = 1
-	label.Text = text
-	label.TextColor3 = color
-	label.TextStrokeTransparency = 0
-	label.TextScaled = true
-	label.Font = Enum.Font.SourceSansBold
-	label.Parent = billboard
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = color
+    label.TextStrokeTransparency = 0
+    label.TextScaled = true
+    label.Font = Enum.Font.SourceSansBold
+    label.Parent = billboard
 
-	billboard.Parent = adornee
-
-	return billboard
+    billboard.Parent = adornee
+    return billboard
 end
 
--- Creates a highlight for a model or part
 local function createHighlight(target, color)
-	local highlight = Instance.new("Highlight")
-	highlight.Name = "ESP_Highlight"
-	highlight.FillColor = color
-	highlight.OutlineColor = Color3.new(1, 1, 1)
-	highlight.FillTransparency = 0.5
-	highlight.OutlineTransparency = 0
-	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-	highlight.Adornee = target
-	highlight.Parent = target
-
-	return highlight
+    local highlight = Instance.new("Highlight")
+    highlight.Name = "ESP_Highlight"
+    highlight.FillColor = color
+    highlight.OutlineColor = Color3.new(1, 1, 1)
+    highlight.FillTransparency = 0.5
+    highlight.OutlineTransparency = 0
+    highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    highlight.Adornee = target
+    highlight.Parent = target
+    return highlight
 end
 
--- Adds ESP to models/parts
-local function addESP(object, color, customName)
-	if addedESPs[object] then return end
+local function addESP(object, color, label)
+    if addedESPs[object] then return end
+    local adornee = object:FindFirstChild("HumanoidRootPart") or (object:IsA("BasePart") and object)
+    if not adornee then return end
+    local tag = createNameTag(adornee, label or object.Name, color)
+    local hl = createHighlight(object, color)
+    addedESPs[object] = { NameTag = tag, Highlight = hl }
 
-	local adornee = object:FindFirstChild("HumanoidRootPart") 
-		or (object:IsA("BasePart") and object) 
-		or (object:IsA("Model") and object:FindFirstChildWhichIsA("BasePart"))
-	if not adornee then return end
-
-	local nameTag = createNameTag(adornee, customName or object.Name, color)
-	local highlight = createHighlight(object, color)
-
-	addedESPs[object] = {
-		NameTag = nameTag,
-		Highlight = highlight,
-	}
-
-	-- Track AncestryChanged so ESP cleans up if object removed
-	local conn = object.AncestryChanged:Connect(function(_, parent)
-		if not parent then
-			if addedESPs[object] then
-				if addedESPs[object].NameTag then
-					addedESPs[object].NameTag:Destroy()
-				end
-				if addedESPs[object].Highlight then
-					addedESPs[object].Highlight:Destroy()
-				end
-				addedESPs[object] = nil
-			end
-			conn:Disconnect()
-		end
-	end)
-
-	table.insert(connections, conn)
+    local conn = object.AncestryChanged:Connect(function(_, parent)
+        if not parent then
+            if addedESPs[object] then
+                addedESPs[object].NameTag:Destroy()
+                addedESPs[object].Highlight:Destroy()
+                addedESPs[object] = nil
+            end
+            conn:Disconnect()
+        end
+    end)
+    table.insert(connections, conn)
 end
 
--- Wrapper for players
-local function tryAddPlayerESP(model, color)
-	if model:IsA("Model") then
-		local root = model:FindFirstChild("HumanoidRootPart")
-		if root then
-			addESP(model, color)
-		else
-			coroutine.wrap(function()
-				local root = model:WaitForChild("HumanoidRootPart", 5)
-				if root then
-					addESP(model, color)
-				end
-			end)()
-		end
-	end
+local function tryAdd(model, type)
+    local colorMap = {
+        Survivors = Color3.fromRGB(0, 255, 0),
+        Killers = Color3.fromRGB(255, 0, 0),
+        Generators = Color3.fromRGB(0, 150, 255),
+        Spikes = Color3.fromRGB(255, 0, 0),
+        Items = Color3.fromRGB(0, 150, 255),
+    }
+    local labelMap = {
+        Generators = "GENERATOR",
+        Spikes = "SPIKE",
+        Items = model.Name,
+    }
+
+    if not settings[type] then return end
+    addESP(model, colorMap[type], labelMap[type])
 end
 
--- Setup for player folders
-local function scanFolder(folder, color)
-	for _, model in ipairs(folder:GetChildren()) do
-		tryAddPlayerESP(model, color)
-	end
+function ESP.EnableCategory(category)
+    settings[category] = true
+    ESP.Refresh()
 end
 
-local function watchFolder(folder, color)
-	local conn = folder.ChildAdded:Connect(function(model)
-		tryAddPlayerESP(model, color)
-	end)
-	table.insert(connections, conn)
+function ESP.DisableCategory(category)
+    settings[category] = false
+    ESP.Refresh()
 end
 
--- Setup for environment objects with dynamic watching
-local function scanEnvironmentObjects()
-	for _, obj in ipairs(ingameMapFolder:GetDescendants()) do
-		if obj.Name == "Instances" and obj:IsA("Folder") then
-			local gen = obj:FindFirstChild("Generator")
-			if gen and gen:IsA("Model") then
-				addESP(gen, Color3.fromRGB(0, 150, 255), "GENERATOR")
-			end
-		elseif obj.Name == "Spike" then
-			addESP(obj, Color3.fromRGB(255, 0, 0), "SPIKE")
-		elseif obj.Name == "BloxyCola" or obj.Name == "Medkit" then
-			addESP(obj, Color3.fromRGB(0, 150, 255), obj.Name)
-		elseif obj.Name == "PizzaDeliveryRig" then
-			addESP(obj, Color3.fromRGB(255, 165, 0), "PIZZA RIG") -- Orange color
-		end
-	end
-end
+function ESP.Refresh()
+    ESP.Disable() -- clear existing
 
-local function watchEnvironmentFolder(folder)
-	local conn = folder.DescendantAdded:Connect(function(obj)
-		if obj.Name == "Instances" and obj:IsA("Folder") then
-			local gen = obj:WaitForChild("Generator", 5)
-			if gen and gen:IsA("Model") then
-				addESP(gen, Color3.fromRGB(0, 150, 255), "GENERATOR")
-			end
-		elseif obj.Name == "Spike" then
-			addESP(obj, Color3.fromRGB(255, 0, 0), "SPIKE")
-		elseif obj.Name == "BloxyCola" or obj.Name == "Medkit" then
-			addESP(obj, Color3.fromRGB(0, 150, 255), obj.Name)
-		elseif obj.Name == "PizzaDeliveryRig" then
-			addESP(obj, Color3.fromRGB(255, 165, 0), "PIZZA RIG")
-		end
-	end)
-	table.insert(connections, conn)
-end
+    if settings.Survivors then
+        for _, m in pairs(survivorsFolder:GetChildren()) do tryAdd(m, "Survivors") end
+    end
+    if settings.Killers then
+        for _, m in pairs(killersFolder:GetChildren()) do tryAdd(m, "Killers") end
+    end
 
-function ESP.Enable()
-	-- Clear existing ESP (if any)
-	ESP.Disable()
-
-	scanFolder(survivorsFolder, Color3.fromRGB(0, 255, 0))
-	scanFolder(killersFolder, Color3.fromRGB(255, 0, 0))
-	watchFolder(survivorsFolder, Color3.fromRGB(0, 255, 0))
-	watchFolder(killersFolder, Color3.fromRGB(255, 0, 0))
-
-	scanEnvironmentObjects()
-	watchEnvironmentFolder(ingameMapFolder)
+    for _, obj in pairs(ingameMapFolder:GetDescendants()) do
+        if settings.Generators and obj:IsA("Model") and obj.Name == "Generator" then
+            tryAdd(obj, "Generators")
+        elseif settings.Spikes and obj.Name == "Spike" then
+            tryAdd(obj, "Spikes")
+        elseif settings.Items and (obj.Name == "BloxyCola" or obj.Name == "Medkit") then
+            tryAdd(obj, "Items")
+        end
+    end
 end
 
 function ESP.Disable()
-	-- Disconnect all event connections
-	for _, conn in ipairs(connections) do
-		conn:Disconnect()
-	end
-	connections = {}
+    for _, c in pairs(connections) do c:Disconnect() end
+    connections = {}
 
-	-- Remove all ESP objects
-	for object, espData in pairs(addedESPs) do
-		if espData.NameTag then
-			espData.NameTag:Destroy()
-		end
-		if espData.Highlight then
-			espData.Highlight:Destroy()
-		end
-		addedESPs[object] = nil
-	end
+    for obj, data in pairs(addedESPs) do
+        data.NameTag:Destroy()
+        data.Highlight:Destroy()
+        addedESPs[obj] = nil
+    end
 end
 
 return ESP
